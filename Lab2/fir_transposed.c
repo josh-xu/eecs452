@@ -15,24 +15,24 @@ Uint16 delta_time;
 Int32 sum[LPL]; // sum array which store the internal value
 // this value should be stored in a circular buffer structure instead of in[ASIZE]
 // "in" is not an array now~
+Int32 sum_temp[LPL]; // sum_temp[] is the newest sum!
 
 // Implement Transposed Form FIR filter
 Int16 FIR_T()
 {
-	Int32 sum_temp[LPL]; // sum_temp[] is the newest sum!
-	Uint16 j;
+	Uint16 k;
 
 	//The actual filter work (Transposed Form)
 	sum_temp[0] = (Int32)in * (Int32)LP[LPL - 1];
-	for(j = 1; j < LPL; j++)
+	for(k = 1; k < LPL; k++)
 	{
-		sum_temp[j] = (Int32)in * (Int32)LP[LPL - j - 1] + sum[j - 1];
+		sum_temp[k] = (Int32)in * (Int32)LP[LPL - k - 1] + sum[k - 1];
 		// sum[] is the old sum! used to compute new sum!
 	}
 	// update all the sum when calculation is finished
-	for(j = 0; j < LPL; j++)
+	for(k = 0; k < LPL; k++)
 	{
-		sum[j] = sum_temp[j];
+		sum[k] = sum_temp[k];
 	}
 
 	sum[LPL - 1] = sum[LPL - 1] + 0x00004000;	// So we round rather than truncate.
@@ -41,24 +41,32 @@ Int16 FIR_T()
 
 void main(void)
 {
-	Uint16 i;
+	Uint16 i, j;
 	Uint16 start_time;
 	Uint16 end_time;
-	Int16 right, left; //AIC inputs
-	Int16 out;
+	Int16  right, left; //AIC inputs
+	Int16  out;
 
 	USBSTK5515_init(); 	//Initializing the Processor
 	AIC_init(); 		//Initializing the Audio Codec
 
 	//Priming the PUMP (sum[LPL])
-	AIC_read2(&right, &left);
-	in = right;
-	sum[0] = (Int32)in * (Int32)LP[LPL - 1];
-	for(i = 1; i < LPL; i++)
+	// for previous code, only one output value be correctly initialized!!!
+	// Others will not!!! must use two loops!
+	for(i = 0; i < LPL; i++)
 	{
 		AIC_read2(&right, &left);
 		in = right;
-		sum[i] = (Int32)in * (Int32)LP[LPL - i - 1] + sum[i - 1];
+		sum_temp[0] = (Int32)in * (Int32)LP[LPL - 1];
+		for(j = 1; j <= i; j++) // end with j = LPL -1 (out i loop)
+		{
+			sum_temp[j] = (Int32)in * (Int32)LP[LPL - j - 1] + sum[j - 1];
+			// for j = i, is to update the newest sum... (near final output)
+		}
+		for(j = 0; j <= i; j++)
+		{
+			sum[j] = sum_temp[j]; // update others as well...
+		}
 	}
 
 	TCR0 = TIME_STOP;
